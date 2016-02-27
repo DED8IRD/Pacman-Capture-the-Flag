@@ -188,15 +188,20 @@ class DefensiveReflexAgent(SmartAgent):
     defenseFood = self.getFoodYouAreDefending(successor).asList()
     features['numInvaders'] = len(invaders)
     if len(invaders) > 0:
-      dists = []
-      distanceToFood = []
+      invaderToMeDist = util.Counter()
+      invaderDistToFood = util.Counter()
+      myDistToFood = util.Counter()
+      minDistToFood = 0.0
       for invader in invaders:
-        dists.append( self.getMazeDistance( myPos, invader.getPosition() ) )
-        distanceToFood.append( min([ self.getMazeDistance( food, invader.getPosition() ) for food in defenseFood]) )
-      features['invaderDistance'] = min(dists)
-      # if myDistToFood[ invaderDistToFood.index(min(invaderDistToFood)) ] < min(invaderDistToFood) :
-      defenseFoodDist = [ self.getMazeDistance( myPos, invaderDist) for invaderDist in distanceToFood]
-      features['defenseFoodDistance'] = min(defenseFoodDist)
+        dist = self.getMazeDistance( myPos, invader.getPosition() )
+        invaderToMeDist[invader] = dist
+        for food in defenseFood:
+          invaderDistToFood[(invader, food)] = self.getMazeDistance( food, invader.getPosition() ) 
+          myDistToFood[(invader, food)] = self.getMazeDistance( food, myPos ) 
+      sortedDist = invaderToMeDist.sortedKeys()
+      sortedFoodDist = invaderDistToFood.sortedKeys()
+      features['invaderDistance'] = invaderToMeDist[ sortedDist[-1] ]
+      features['defenseFoodDistance'] = min( invaderDistToFood[ sortedFoodDist[-1] ], myDistToFood[ sortedFoodDist[-1] ] )
 
     if action == Directions.STOP: features['stop'] = 1
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
