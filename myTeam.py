@@ -152,16 +152,49 @@ class OffensiveReflexAgent(SmartAgent):
     successor = self.getSuccessor(gameState, action)
     features['successorScore'] = self.getScore(successor)
 
+    myState = successor.getAgentState(self.index)
+    myPos = myState.getPosition()    
+
+    # Computes distance to enemy ghosts
+    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+    ghosts = [a for a in enemies if not a.isPacman and a.getPosition() != None]
+    # features['numGhosts'] = len(ghosts)
+    if len(ghosts) > 0:
+      ghostEval = 0.0
+      for ghost in ghosts:
+        ghostDistance = self.getMazeDistance( myPos, ghost.getPosition() ) 
+        if ghost.scaredTimer == 0:       # If ghost is not scared
+          if ghostDistance == 0:         # If your agent touches a ghost,
+            ghostEval = -float('inf')    # the ghostDistance feature evaluates to -infinity
+            break
+          else:
+            if ghostDistance < abs(ghostEval):
+              ghostEval = ghostDistance
+        else:   # If ghost is scared
+          if ghostDistance == 0:
+            ghostEval = 100
+            break
+          else:
+            if ghostDistance < abs(ghostEval):
+              ghostEval = - ghostDistance
+      features['distanceToGhost'] = ghostEval
+
     # Compute distance to the nearest food
     foodList = self.getFood(successor).asList()
     if len(foodList) > 0: # This should always be True,  but better safe than sorry
-      myPos = successor.getAgentState(self.index).getPosition()
       minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
       features['distanceToFood'] = minDistance
+      features['foodRemaining'] = len(foodList)
+
+    # Compute distance to capsules
+    capsules = self.getCapsules(successor)
+    if len(capsules) > 0:
+      minDistance = min([ self.getMazeDistance(myPos, capsule) for capsule in capsules ])
+      features['distanceToCapsules'] = minDistance
     return features
 
   def getWeights(self, gameState, action):
-    return {'successorScore': 100, 'distanceToFood': -1}
+    return {'successorScore': 100, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 1, 'distanceToCapsules': -1}
 
 class DefensiveReflexAgent(SmartAgent):
   """
@@ -174,6 +207,7 @@ class DefensiveReflexAgent(SmartAgent):
   def getFeatures(self, gameState, action):
     features = util.Counter()
     successor = self.getSuccessor(gameState, action)
+    features['successorScore'] = self.getScore(successor)
 
     myState = successor.getAgentState(self.index)
     myPos = myState.getPosition()
@@ -182,7 +216,7 @@ class DefensiveReflexAgent(SmartAgent):
     features['onDefense'] = 1
     if myState.isPacman: features['onDefense'] = 0
 
-    # Computes distance to invaders we can see
+    # Computes distance to invaders we can see and their distance to the food we are defending
     enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
     defenseFood = self.getFoodYouAreDefending(successor).asList()
@@ -193,10 +227,13 @@ class DefensiveReflexAgent(SmartAgent):
       myDistToFood = util.Counter()
       minDistToFood = 0.0
       for invader in invaders:
+        # Calculate agent's distance to invader
         dist = self.getMazeDistance( myPos, invader.getPosition() )
         invaderToMeDist[invader] = dist
         for food in defenseFood:
+          # Calculates invader's distance to food 
           invaderDistToFood[(invader, food)] = self.getMazeDistance( food, invader.getPosition() ) 
+          # Calculates agent's distance to same food
           myDistToFood[(invader, food)] = self.getMazeDistance( food, myPos ) 
       sortedDist = invaderToMeDist.sortedKeys()
       sortedFoodDist = invaderDistToFood.sortedKeys()
@@ -210,4 +247,4 @@ class DefensiveReflexAgent(SmartAgent):
     return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'defenseFoodDistance': -10, 'stop': -100, 'reverse': -2}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'defenseFoodDistance': -5, 'stop': -100, 'reverse': -2}
