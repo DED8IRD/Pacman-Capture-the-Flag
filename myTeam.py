@@ -160,23 +160,28 @@ class OffensiveReflexAgent(SmartAgent):
     ghosts = [a for a in enemies if not a.isPacman and a.getPosition() != None]
     # features['numGhosts'] = len(ghosts)
     if len(ghosts) > 0:
+      scaredGhosts = [ghost for ghost in ghosts if ghost.scaredTimer > 0]
+      regGhosts = [ghost for ghost in ghosts if ghost.scaredTimer == 0]
       ghostEval = 0.0
-      for ghost in ghosts:
+      for ghost in scaredGhosts:       # If ghost is scared
         ghostDistance = self.getMazeDistance( myPos, ghost.getPosition() ) 
-        if ghost.scaredTimer == 0:       # If ghost is not scared
-          if ghostDistance == 0:         # If your agent touches a ghost,
-            ghostEval = -float('inf')    # the ghostDistance feature evaluates to -infinity
-            break
-          else:
-            if ghostDistance < abs(ghostEval):
+        if ghostDistance == 0:
+          ghostEval = 100
+          break
+        else:
+          if ghostDistance < abs(ghostEval):
+            ghostEval = 20 - ghostDistance   
+
+
+      for ghost in regGhosts:          # If ghost is not scared
+        ghostEval = 0.0
+        ghostDistance = self.getMazeDistance( myPos, ghost.getPosition() ) 
+        if ghostDistance == 0:         # If your agent touches a ghost,
+          ghostEval = -1000            # the ghostDistance feature evaluates to -1000
+          break
+        else:
+          if ghostDistance < abs(ghostEval):
               ghostEval = ghostDistance
-        else:   # If ghost is scared
-          if ghostDistance == 0:
-            ghostEval = 100
-            break
-          else:
-            if ghostDistance < abs(ghostEval):
-              ghostEval = - ghostDistance
       features['distanceToGhost'] = ghostEval
 
     # Compute distance to the nearest food
@@ -184,7 +189,7 @@ class OffensiveReflexAgent(SmartAgent):
     if len(foodList) > 0: # This should always be True,  but better safe than sorry
       minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
       features['distanceToFood'] = minDistance
-      features['foodRemaining'] = len(foodList)
+      # features['foodRemaining'] = len(foodList)
 
     # Compute distance to capsules
     capsules = self.getCapsules(successor)
