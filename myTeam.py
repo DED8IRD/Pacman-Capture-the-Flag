@@ -205,46 +205,52 @@ class DefensiveReflexAgent(SmartAgent):
   """
 
   def getFeatures(self, gameState, action):
-    features = util.Counter()
-    successor = self.getSuccessor(gameState, action)
-    features['successorScore'] = self.getScore(successor)
+        features = util.Counter()
+        successor = self.getSuccessor(gameState, action)
+        features['successorScore'] = self.getScore(successor)
 
-    myState = successor.getAgentState(self.index)
-    myPos = myState.getPosition()
+        myState = successor.getAgentState(self.index)
+        myPos = myState.getPosition()
 
-    # Computes whether we're on defense (1) or offense (0)
-    features['onDefense'] = 1
-    if myState.isPacman: features['onDefense'] = 0
+        # Computes whether we're on defense (1) or offense (0)
+        features['onDefense'] = 1
+        if myState.isPacman: features['onDefense'] = 0
 
-    # Computes distance to invaders we can see and their distance to the food we are defending
-    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
-    defenseFood = self.getFoodYouAreDefending(successor).asList()
-    features['numInvaders'] = len(invaders)
-    if len(invaders) > 0:
-      invaderToMeDist = util.Counter()
-      invaderDistToFood = util.Counter()
-      myDistToFood = util.Counter()
-      minDistToFood = 0.0
-      for invader in invaders:
-        # Calculate agent's distance to invader
-        dist = self.getMazeDistance( myPos, invader.getPosition() )
-        invaderToMeDist[invader] = dist
-        for food in defenseFood:
-          # Calculates invader's distance to food 
-          invaderDistToFood[(invader, food)] = self.getMazeDistance( food, invader.getPosition() ) 
-          # Calculates agent's distance to same food
-          myDistToFood[(invader, food)] = self.getMazeDistance( food, myPos ) 
-      sortedDist = invaderToMeDist.sortedKeys()
-      sortedFoodDist = invaderDistToFood.sortedKeys()
-      features['invaderDistance'] = invaderToMeDist[ sortedDist[-1] ]
-      features['defenseFoodDistance'] = min( invaderDistToFood[ sortedFoodDist[-1] ], myDistToFood[ sortedFoodDist[-1] ] )
+        # Computes distance to invaders we can see and their distance to the food we are defending
+        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+        defenseFood = self.getFoodYouAreDefending(successor).asList()
+        features['numInvaders'] = len(invaders)
+        if len(invaders) == 0:
+             # Compute distance to the nearest food
+            foodList = self.getFood(successor).asList()
+            if len(foodList) > 0: # This should always be True,  but better safe than sorry
+              minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+              features['distanceToFood'] = minDistance + 1
 
-    if action == Directions.STOP: features['stop'] = 1
-    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-    if action == rev: features['reverse'] = 1
+            dist = 0.0
+            distances = [self.getMazeDistance(myPos, enemy.getPosition()) for enemy in enemies if (enemy.scaredTimer != 0 and enemy.getPosition() is not None)]
+            if len(distances) > 0:
+                dist = min(distances) + 1
+            features['invaderDistance'] = dist
+            features['defenseFoodDistance'] = 0.
 
-    return features
+
+        else:
+            distances = [self.getMazeDistance(myPos, enemy.getPosition()) for enemy in enemies if (enemy.scaredTimer == 0 and enemy.getPosition() is not None)]
+            if len(distances) > 0:
+                features['enemyChase'] = min(distances) + 1
+
+            features['invaderDistance'] = min([self.getMazeDistance(myPos, invader.getPosition()) for invader in invaders]) + 1
+            features['defenseFoodDistance'] = min([min([self.getMazeDistance(invader.getPosition(), food) for invader in invaders]) for food in defenseFood]) + 1
+            features['distanceToFood'] = 0.0
+
+
+        if action == Directions.STOP: features['stop'] = 1
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+        if action == rev: features['reverse'] = 1
+
+        return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'defenseFoodDistance': -5, 'stop': -100, 'reverse': -2}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10}
