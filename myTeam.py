@@ -158,13 +158,20 @@ class OffensiveReflexAgent(SmartAgent):
     # Computes distance to enemy ghosts
     enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
     ghosts = [a for a in enemies if not a.isPacman and a.getPosition() != None]
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+
+    features['invaderDistance'] = 0.0
+    if len(invaders) > 0:
+        features['invaderDistance'] = min([self.getMazeDistance(myPos, invader.getPosition()) for invader in invaders]) + 1
+
     # features['numGhosts'] = len(ghosts)
     if len(ghosts) > 0:
       ghostEval = 0.0
+      ghostScared = 0.0
       for ghost in ghosts:
         ghostDistance = self.getMazeDistance( myPos, ghost.getPosition() ) 
         if ghost.scaredTimer == 0:       # If ghost is not scared
-          if ghostDistance == 0:         # If your agent touches a ghost,
+          if ghostDistance <= 1:         # If your agent touches a ghost,
             ghostEval = -float('inf')    # the ghostDistance feature evaluates to -infinity
             break
           else:
@@ -172,11 +179,11 @@ class OffensiveReflexAgent(SmartAgent):
               ghostEval = ghostDistance
         else:   # If ghost is scared
           if ghostDistance == 0:
-            ghostEval = 100
+            ghostScared = 100
             break
           else:
             if ghostDistance < abs(ghostEval):
-              ghostEval = - ghostDistance
+              ghostScared = - ghostDistance
       features['distanceToGhost'] = ghostEval
 
     # Compute distance to the nearest food
@@ -191,10 +198,13 @@ class OffensiveReflexAgent(SmartAgent):
     if len(capsules) > 0:
       minDistance = min([ self.getMazeDistance(myPos, capsule) for capsule in capsules ])
       features['distanceToCapsules'] = minDistance
+
+    if action == Directions.STOP: features['stop'] = 1
+
     return features
 
   def getWeights(self, gameState, action):
-    return {'successorScore': 100, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 1, 'distanceToCapsules': -1}
+    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'stop': -50, 'ghostScared': 50}
 
 class DefensiveReflexAgent(SmartAgent):
   """
