@@ -89,6 +89,13 @@ class SmartAgent(CaptureAgent):
   """
   A base class for search agents that chooses score-maximizing actions.
   """
+
+  def registerInitialState(self, gameState):
+
+      CaptureAgent.registerInitialState(self, gameState)
+      self.boundary_top = True
+      self.boundaries = self.boundaryTravel(gameState)
+
   def chooseAction(self, gameState):
     """
     Picks among the actions with the highest Q(s,a).
@@ -140,6 +147,9 @@ class SmartAgent(CaptureAgent):
     a counter or a dictionary.
     """
     return {'successorScore': 1.0}
+
+  def boundaryTravel(self, gameState):
+      return (0, 0), (0, 0)
 
 class OffensiveReflexAgent(SmartAgent):
   """
@@ -226,6 +236,17 @@ class DefensiveReflexAgent(SmartAgent):
         features['onDefense'] = 1
         if myState.isPacman: features['onDefense'] = 0
 
+        boundaries = self.boundaries
+
+        # If the agent needs to go to the upper bound, the bound is set to the upper bound. Otherwise it's the lower bound
+        if self.boundary_top is True: bound = boundaries[0]
+        else: bound = boundaries[1]
+
+        # If the agent has reached the upper bound, set the top boundary to false and vice versa
+        if myPos == bound: self.boundary_top = not(self.boundary_top)
+
+        features['bound'] = self.getMazeDistance(myPos, bound)
+
         # Computes distance to invaders we can see and their distance to the food we are defending
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
         invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
@@ -263,4 +284,25 @@ class DefensiveReflexAgent(SmartAgent):
         return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10, 'bound': -5}
+
+
+  def boundaryTravel(self, gameState):
+    """
+    Returns two points that act as a boundary line along which the agent travels
+    """
+    foodList = self.getFood(gameState).asList()
+    max_y = max([food[1] for food in foodList])
+    mid_x = max([food[0] for food in foodList])/2
+
+    walls = gameState.getWalls().asList()
+
+    # lower bound is 1/3 of grid. Upper bound is 2/3 of grid
+    lower = max_y/3
+    upper = (max_y*2)/3
+
+    # If the positions are illegal states, add 1 to get a legal state
+    if (mid_x, lower) in walls: lower += 1
+    if (mid_x, upper) in walls: upper += 1
+
+    return (mid_x, lower), (mid_x, upper)
