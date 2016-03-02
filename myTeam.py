@@ -89,6 +89,13 @@ class SmartAgent(CaptureAgent):
   """
   A base class for search agents that chooses score-maximizing actions.
   """
+
+  def registerInitialState(self, gameState):
+
+      CaptureAgent.registerInitialState(self, gameState)
+      self.boundary_top = True
+      self.boundaries = self.boundaryTravel(gameState)
+
   def chooseAction(self, gameState):
     """
     Picks among the actions with the highest Q(s,a).
@@ -97,8 +104,8 @@ class SmartAgent(CaptureAgent):
 
     # You can profile your evaluation time by uncommenting these lines
     # start = time.time()
-    # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
     values = [self.evaluate(gameState, a) for a in actions]
+    # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
 
     maxValue = max(values)
     bestActions = [action for action, value in zip(actions, values) if value == maxValue]
@@ -141,6 +148,8 @@ class SmartAgent(CaptureAgent):
     """
     return {'successorScore': 1.0}
 
+  def boundaryTravel(self, gameState):
+      return (0, 0), (0, 0)
 
 class OffensiveReflexAgent(SmartAgent):
   """
@@ -161,7 +170,7 @@ class OffensiveReflexAgent(SmartAgent):
     ghosts = [a for a in enemies if not a.isPacman and a.getPosition() != None]
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
 
-    # If invader nearby, chase invader
+    features['invaderDistance'] = 0.0
     if len(invaders) > 0:
         features['invaderDistance'] = min([self.getMazeDistance(myPos, invader.getPosition()) for invader in invaders]) + 1
 
@@ -176,17 +185,16 @@ class OffensiveReflexAgent(SmartAgent):
             ghostEval = -float('inf')    # the ghostDistance feature evaluates to -infinity
             break
           else:
-            if ghostEval == 0.0 or ghostDistance < ghostEval:
+            if ghostDistance < abs(ghostEval):
               ghostEval = ghostDistance
         else:   # If ghost is scared
-          if ghostDistance <= 1:
+          if ghostDistance == 0:
             ghostScared = 100
             break
           else:
-            if ghostEval == 0.0 or ghostDistance < ghostEval:
+            if ghostDistance < abs(ghostEval):
               ghostScared = - ghostDistance
       features['distanceToGhost'] = ghostEval
-      features['ghostScared'] = ghostScared
 
     # Compute distance to the nearest food
     foodList = self.getFood(successor).asList()
@@ -206,8 +214,7 @@ class OffensiveReflexAgent(SmartAgent):
     return features
 
   def getWeights(self, gameState, action):
-    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'stop': -50, 'ghostScared': -1}
-
+    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'stop': -50, 'ghostScared': 50}
 
 class DefensiveReflexAgent(SmartAgent):
   """
@@ -218,73 +225,84 @@ class DefensiveReflexAgent(SmartAgent):
   """
 
   def getFeatures(self, gameState, action):
-    features = util.Counter()
-    successor = self.getSuccessor(gameState, action)
-    features['successorScore'] = self.getScore(successor)
+        features = util.Counter()
+        successor = self.getSuccessor(gameState, action)
+        features['successorScore'] = self.getScore(successor)
 
-    myState = successor.getAgentState(self.index)
-    myPos = myState.getPosition()
+        myState = successor.getAgentState(self.index)
+        myPos = myState.getPosition()
 
-    # Computes distance to invaders we can see and their distance to the food we are defending
-    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
-    defenseFood = self.getFoodYouAreDefending(successor).asList()
-    features['numInvaders'] = len(invaders)
+        # Computes whether we're on defense (1) or offense (0)
+        features['onDefense'] = 1
+        if myState.isPacman: features['onDefense'] = 0
 
-    # Computes whether we're on defense (1) or offense (0)
-    defense = 10
-    if myState.isPacman: features['onDefense'] = 0
-    else: features['onDefense'] = 1
-    numInvaders = len([invader for invader in enemies if invader.isPacman])
-    if numInvaders > 0:
-      features['onDefense'] = defense * numInvaders
-      features['distanceToFood'] = min([self.getMazeDistance(myPos, food) for food in defenseFood])
-      if myState.isPacman: features['onDefense'] = - numInvaders * defense
+        boundaries = self.boundaries
 
-    # Evaluates to -infinity if there are 2 or less food remaining on your side
-    numFood = len([food for food in defenseFood])
-    features['foodRemaining'] = 15.0 / numFood
-    if numFood < 15:
-      features['onDefense'] = 100 - numFood
+        # If the agent needs to go to the upper bound, the bound is set to the upper bound. Otherwise it's the lower bound
+        if self.boundary_top is True: bound = boundaries[0]
+        else: bound = boundaries[1]
 
-    if numInvaders == 0:  # If no invaders, go on the offensive
-      # Compute distance to the nearest food
-      foodList = self.getFood(successor).asList()
-      if len(foodList) > 0: # This should always be True,  but better safe than sorry
-        minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
-        features['distanceToFood'] = minDistance
+        # If the agent has reached the upper bound, set the top boundary to false and vice versa
+        if myPos == bound: self.boundary_top = not(self.boundary_top)
 
-      dist = 0.0
-      enemyDists = [ self.getMazeDistance(myPos, enemy.getPosition()) for enemy in enemies if (enemy.scaredTimer == 0 and enemy.getPosition() is not None) ]
-      if len(enemyDists) > 0:
-        dist = min(enemyDists)
-      else:             # If agent gets eaten by ghost
-        dist = 10       # Evaluates to -100
-      features['invaderDistance'] = dist
+        features['bound'] = self.getMazeDistance(myPos, bound)
 
-      scaredDists = [ self.getMazeDistance(myPos, enemy.getPosition()) for enemy in enemies if (enemy.scaredTimer > 0 and enemy.getPosition() is not None) ]
-      if len(scaredDists) > 0:
-        dist = min(scaredDists)
-        if dist >= 1:   # Evaluates to +50 if agent eats scared ghost
-          features['scaredDistance'] = 50
+        # Computes distance to invaders we can see and their distance to the food we are defending
+        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+        defenseFood = self.getFoodYouAreDefending(successor).asList()
+        features['numInvaders'] = len(invaders)
+        if len(invaders) == 0:
+             # Compute distance to the nearest food
+            foodList = self.getFood(successor).asList()
+            if len(foodList) > 0: # This should always be True,  but better safe than sorry
+              minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+              features['distanceToFood'] = minDistance + 1
 
-    else: # If there are invaders, exhibit defensive behavior
-      if len(invaders) > 0:
-        # Calculate agent's distance to invader
-        dist = [ self.getMazeDistance( myPos, invader.getPosition() ) for invader in invaders ]
-        nearestInvader = min(dist)
-        if myState.scaredTimer == 0:  # This agent is not scared
-          if nearestInvader >= 1:     # If defensive agent eats ghost
-            nearestInvader == -10     # Evaluates to +100
-          features['invaderDistance'] = nearestInvader 
-          features['defenseFoodDistance'] = min([min([self.getMazeDistance(invader.getPosition(), food) for invader in invaders]) for food in defenseFood])
-        else:   # This agent is scared
-          features['invaderDistance'] = - nearestInvader
-    if action == Directions.STOP: features['stop'] = 1
-    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-    if action == rev: features['reverse'] = 1
+            dist = 0.0
+            distances = [self.getMazeDistance(myPos, enemy.getPosition()) for enemy in enemies if (enemy.scaredTimer != 0 and enemy.getPosition() is not None)]
+            if len(distances) > 0:
+                dist = min(distances) + 1
+            features['invaderDistance'] = dist
+            features['defenseFoodDistance'] = 0.
 
-    return features
+
+        else:
+            distances = [self.getMazeDistance(myPos, enemy.getPosition()) for enemy in enemies if (enemy.scaredTimer == 0 and enemy.getPosition() is not None)]
+            if len(distances) > 0:
+                features['enemyChase'] = min(distances) + 1
+
+            features['invaderDistance'] = min([self.getMazeDistance(myPos, invader.getPosition()) for invader in invaders]) + 1
+            features['defenseFoodDistance'] = min([min([self.getMazeDistance(invader.getPosition(), food) for invader in invaders]) for food in defenseFood]) + 1
+            features['distanceToFood'] = 0.0
+
+
+        if action == Directions.STOP: features['stop'] = 1
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+        if action == rev: features['reverse'] = 1
+
+        return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 5, 'foodRemaining': -1, 'invaderDistance': -10, 'scaredDistance': 1, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10, 'bound': -5}
+
+
+  def boundaryTravel(self, gameState):
+    """
+    Returns two points that act as a boundary line along which the agent travels
+    """
+    foodList = self.getFood(gameState).asList()
+    max_y = max([food[1] for food in foodList])
+    mid_x = max([food[0] for food in foodList])/2
+
+    walls = gameState.getWalls().asList()
+
+    # lower bound is 1/3 of grid. Upper bound is 2/3 of grid
+    lower = max_y/3
+    upper = (max_y*2)/3
+
+    # If the positions are illegal states, add 1 to get a legal state
+    if (mid_x, lower) in walls: lower += 1
+    if (mid_x, upper) in walls: upper += 1
+
+    return (mid_x, lower), (mid_x, upper)
