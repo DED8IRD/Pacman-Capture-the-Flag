@@ -149,6 +149,8 @@ class SmartAgent(CaptureAgent):
   def boundaryTravel(self, gameState):
       return (0, 0), (0, 0)
 
+      
+
 class OffensiveReflexAgent(SmartAgent):
   """
   A reflex agent that seeks food. This is an agent
@@ -208,11 +210,13 @@ class OffensiveReflexAgent(SmartAgent):
       features['distanceToCapsules'] = minDistance
 
     if action == Directions.STOP: features['stop'] = 1
+    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+    if action == rev: features['reverse'] = 1
 
     return features
 
   def getWeights(self, gameState, action):
-    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'stop': -50, 'ghostScared': 50}
+    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'ghostScared': 50, 'stop': -50, 'reverse': -25}
 
 class DefensiveReflexAgent(SmartAgent):
   """
@@ -230,26 +234,34 @@ class DefensiveReflexAgent(SmartAgent):
         myState = successor.getAgentState(self.index)
         myPos = myState.getPosition()
 
-        # Computes whether we're on defense (1) or offense (0)
-        features['onDefense'] = 1
-        if myState.isPacman: features['onDefense'] = 0
-
-        boundaries = self.boundaries
-
-        # If the agent needs to go to the upper bound, the bound is set to the upper bound. Otherwise it's the lower bound
-        if self.boundary_top is True: bound = boundaries[0]
-        else: bound = boundaries[1]
-
-        # If the agent has reached the upper bound, set the top boundary to false and vice versa
-        if myPos == bound: self.boundary_top = not(self.boundary_top)
-
-        features['bound'] = self.getMazeDistance(myPos, bound)
-
-        # Computes distance to invaders we can see and their distance to the food we are defending
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
         invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+        numInvaders = len([invader for invader in enemies if invader.isPacman])
+        features['numInvaders'] = numInvaders
         defenseFood = self.getFoodYouAreDefending(successor).asList()
-        features['numInvaders'] = len(invaders)
+        numFood = len([food for food in defenseFood])
+        boundaries = self.boundaries
+
+        # Computes whether we're on defense (1) or offense (0)
+        defense = 10
+        if myState.isPacman: features['onDefense'] = 0
+        else: features['onDefense'] = 1
+
+        # Incentivizes returning to defense if defense food below 10 or enemy Pacmen are invading our side
+        if numFood < 10 or numInvaders > 0:  
+          features['onDefense'] = defense * numInvaders^2
+          features['distanceToFood'] = min([self.getMazeDistance(myPos, food) for food in defenseFood])
+        
+        if numInvaders == 0:
+          # If the agent needs to go to the upper bound, the bound is set to the upper bound. Otherwise it's the lower bound
+          if self.boundary_top is True: bound = boundaries[0]
+          else: bound = boundaries[1]
+
+          # If the agent has reached the upper bound, set the top boundary to false and vice versa
+          if myPos == bound: self.boundary_top = not(self.boundary_top)
+          features['bound'] = self.getMazeDistance(myPos, bound)
+
+        # Computes distance to invaders we can see and their distance to the food we are defending
         if len(invaders) == 0:
              # Compute distance to the nearest food
             foodList = self.getFood(successor).asList()
