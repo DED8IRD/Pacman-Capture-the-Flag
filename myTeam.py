@@ -159,46 +159,54 @@ class OffensiveReflexAgent(SmartAgent):
     # Computes distance to enemy ghosts
     enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
     ghosts = [a for a in enemies if not a.isPacman and a.getPosition() != None]
-    if len(ghosts) > 0:
-      scaredGhosts = [ghost for ghost in ghosts if ghost.scaredTimer > 0]
-      regGhosts = [ghost for ghost in ghosts if ghost.scaredTimer == 0]
-      ghostDistance = 0.0
-      ghostEval = 0.0
-      for ghost in scaredGhosts:       # If ghost is scared
-        ghostDistance = self.getMazeDistance( myPos, ghost.getPosition() ) 
-        if ghostDistance >= 1:
-          ghostEval = 100
-          break
-        else:
-          if ghostDistance < abs(ghostEval):
-            ghostEval = 10 - ghostDistance   
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
 
-      for ghost in regGhosts:          # If ghost is not scared
-        ghostDist = self.getMazeDistance( myPos, ghost.getPosition() ) 
-        if ghostDist <= 1:             # If your agent touches a ghost,
-          ghostEval = -1000            # the ghostDistance feature evaluates to -1000
-          break
-        else:
-          if ghostDist < ghostDistance:
-              ghostEval = ghostDist
+    # If invader nearby, chase invader
+    if len(invaders) > 0:
+        features['invaderDistance'] = min([self.getMazeDistance(myPos, invader.getPosition()) for invader in invaders]) + 1
+
+    # features['numGhosts'] = len(ghosts)
+    if len(ghosts) > 0:
+      ghostEval = 0.0
+      ghostScared = 0.0
+      for ghost in ghosts:
+        ghostDistance = self.getMazeDistance( myPos, ghost.getPosition() ) 
+        if ghost.scaredTimer == 0:       # If ghost is not scared
+          if ghostDistance <= 1:         # If your agent touches a ghost,
+            ghostEval = -float('inf')    # the ghostDistance feature evaluates to -infinity
+            break
+          else:
+            if ghostEval == 0.0 or ghostDistance < ghostEval:
+              ghostEval = ghostDistance
+        else:   # If ghost is scared
+          if ghostDistance <= 1:
+            ghostScared = 100
+            break
+          else:
+            if ghostEval == 0.0 or ghostDistance < ghostEval:
+              ghostScared = - ghostDistance
       features['distanceToGhost'] = ghostEval
+      features['ghostScared'] = ghostScared
 
     # Compute distance to the nearest food
     foodList = self.getFood(successor).asList()
     if len(foodList) > 0: # This should always be True,  but better safe than sorry
       minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
       features['distanceToFood'] = minDistance
-      # features['foodRemaining'] = len(foodList)
+      features['foodRemaining'] = len(foodList)
 
     # Compute distance to capsules
     capsules = self.getCapsules(successor)
     if len(capsules) > 0:
       minDistance = min([ self.getMazeDistance(myPos, capsule) for capsule in capsules ])
       features['distanceToCapsules'] = minDistance
+
+    if action == Directions.STOP: features['stop'] = 1
+
     return features
 
   def getWeights(self, gameState, action):
-    return {'successorScore': 100, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 1, 'distanceToCapsules': -1}
+    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'stop': -50, 'ghostScared': -1}
 
 
 class DefensiveReflexAgent(SmartAgent):
@@ -230,6 +238,7 @@ class DefensiveReflexAgent(SmartAgent):
     numInvaders = len([invader for invader in enemies if invader.isPacman])
     if numInvaders > 0:
       features['onDefense'] = defense * numInvaders
+      features['distanceToFood'] = min([self.getMazeDistance(myPos, food) for food in defenseFood])
       if myState.isPacman: features['onDefense'] = - numInvaders * defense
 
     # Evaluates to -infinity if there are 2 or less food remaining on your side
