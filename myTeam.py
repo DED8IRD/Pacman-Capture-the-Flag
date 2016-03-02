@@ -94,6 +94,11 @@ class SmartAgent(CaptureAgent):
 
       CaptureAgent.registerInitialState(self, gameState)
       self.boundary_top = True
+      if gameState.getAgentState(self.index).getPosition()[0] == 1:
+          self.isRed = False
+      else:
+          self.isRed = True
+
       self.boundaries = self.boundaryTravel(gameState)
 
   def chooseAction(self, gameState):
@@ -284,16 +289,21 @@ class DefensiveReflexAgent(SmartAgent):
         return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10, 'bound': -5}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10, 'bound': -10}
 
 
   def boundaryTravel(self, gameState):
     """
     Returns two points that act as a boundary line along which the agent travels
     """
-    foodList = self.getFood(gameState).asList()
+    foodList = self.getFoodYouAreDefending(gameState).asList()
     max_y = max([food[1] for food in foodList])
-    mid_x = max([food[0] for food in foodList])/2
+
+
+    if not self.isRed:
+        mid_x = max([food[0] for food in foodList])
+    else:
+        mid_x = min([food[0] for food in foodList])
 
     walls = gameState.getWalls().asList()
 
