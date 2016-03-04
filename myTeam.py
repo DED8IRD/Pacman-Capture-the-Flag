@@ -289,21 +289,21 @@ class DefensiveReflexAgent(SmartAgent):
         return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -50, 'enemyChase': 10, 'bound': -10}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'distanceToFood': -1, 'defenseFoodDistance': -8, 'stop': -100, 'reverse': -5, 'enemyChase': 10, 'bound': -10}
 
 
   def boundaryTravel(self, gameState):
     """
     Returns two points that act as a boundary line along which the agent travels
     """
-    foodList = self.getFoodYouAreDefending(gameState).asList()
-    max_y = max([food[1] for food in foodList])
+    walls = gameState.getWalls().asList()
+    max_y = max([wall[1] for wall in walls])
 
 
     if not self.isRed:
-        mid_x = max([food[0] for food in foodList])
+        mid_x = max([wall[0] for wall in walls])/2
     else:
-        mid_x = min([food[0] for food in foodList])
+        mid_x = max([wall[0] for wall in walls])/2
 
     walls = gameState.getWalls().asList()
 
@@ -312,7 +312,7 @@ class DefensiveReflexAgent(SmartAgent):
     upper = (max_y*2)/3
 
     # If the positions are illegal states, add 1 to get a legal state
-    if (mid_x, lower) in walls: lower += 1
-    if (mid_x, upper) in walls: upper += 1
+    while (mid_x, lower) in walls: lower += 1
+    while (mid_x, upper) in walls: upper -= 1
 
     return (mid_x, lower), (mid_x, upper)
