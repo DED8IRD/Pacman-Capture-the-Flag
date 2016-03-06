@@ -95,9 +95,9 @@ class SmartAgent(CaptureAgent):
       CaptureAgent.registerInitialState(self, gameState)
       self.boundary_top = True
       if gameState.getAgentState(self.index).getPosition()[0] == 1:
-          self.isRed = False
-      else:
           self.isRed = True
+      else:
+          self.isRed = False
 
       self.boundaries = self.boundaryTravel(gameState)
       self.treeDepth = 3
@@ -177,6 +177,8 @@ class OffensiveReflexAgent(SmartAgent):
     directions = {'north': (0, 1), 'south': (0, -1), 'east': (1, 0), 'west': (-1, 0)}
     ghost_weights = {'distance': 5, 'scared': 5}
 
+    def expectation(opponents, )
+
     def get_ghost_actions(current_pos):
         walls = gameState.getWalls().asList()
 
@@ -198,17 +200,16 @@ class OffensiveReflexAgent(SmartAgent):
         return (current_pos[0] + act[0], current_pos[1] + act[1])
 
     def ghost_eval(gamestate, opponents, opponent):
-        features = {}
         newPos = opponents[opponent]
         enemy = gamestate.getAgentState(opponent)
         myPos = gamestate.getAgentState(self.index).getPosition()
 
         if enemy.scaredTimer != 0:
-            features['distance'] = -self.getMazeDistance(myPos, newPos)*ghost_weights['distance']
+            distance = -self.getMazeDistance(myPos, newPos)*ghost_weights['distance']
         else:
-            features['distance'] = self.getMazeDistance(myPos, newPos)*ghost_weights['distance']
+            distance = self.getMazeDistance(myPos, newPos)*ghost_weights['distance']
 
-        return sum([features[feature] for feature in features])
+        return distance
 
     def minimax(gamestate, depth, agent, opponents, alpha=-float('inf'), beta=float('inf')):
 
@@ -397,7 +398,7 @@ class DefensiveReflexAgent(SmartAgent):
 
 
     if not self.isRed:
-        mid_x = max([wall[0] for wall in walls])/2
+        mid_x = (max([wall[0] for wall in walls])/2) + 2
     else:
         mid_x = max([wall[0] for wall in walls])/2
 
