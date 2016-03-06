@@ -100,6 +100,7 @@ class SmartAgent(CaptureAgent):
           self.isRed = True
 
       self.boundaries = self.boundaryTravel(gameState)
+      self.treeDepth = 3
 
   def chooseAction(self, gameState):
     """
@@ -162,6 +163,100 @@ class OffensiveReflexAgent(SmartAgent):
   we give you to get an idea of what an offensive agent might look like,
   but it is by no means the best or only way to build an offensive agent.
   """
+
+  def getAction(self, gameState):
+    """
+      Returns the expectimax action using self.depth and self.evaluationFunction
+
+      All ghosts should be modeled as choosing uniformly at random from their
+      legal moves.
+    """
+    opponents = {}
+    for enemy in self.getOpponents(gameState):
+        opponents[enemy] = gameState.getAgentState(enemy).getPosition()
+    directions = {'north': (0, 1), 'south': (0, -1), 'east': (1, 0), 'west': (-1, 0)}
+    ghost_weights = {'distance': 5, 'scared': 5}
+
+    def get_ghost_actions(current_pos):
+        walls = gameState.getWalls().asList()
+
+        max_x = max([wall[0] for wall in walls])
+        max_y = max([wall[1] for wall in walls])
+
+        actions = []
+        for direction in directions:
+            action = directions[direction]
+            new_pos = (int(current_pos[0] + action[0]), int(current_pos[1] + action[1]))
+            if new_pos not in walls:
+                if (1 <= new_pos[0] < max_x) and (1 <= new_pos[1] < max_y):
+                    actions.append(direction.title())
+
+        return actions
+
+    def get_new_position(current_pos, action):
+        act = directions[[direction for direction in directions if str(action).lower() == direction][0]]
+        return (current_pos[0] + act[0], current_pos[1] + act[1])
+
+    def ghost_eval(gamestate, opponents, opponent):
+        features = {}
+        newPos = opponents[opponent]
+        enemy = gamestate.getAgentState(opponent)
+        myPos = gamestate.getAgentState(self.index).getPosition()
+
+        if enemy.scaredTimer != 0:
+            features['distance'] = -self.getMazeDistance(myPos, newPos)*ghost_weights['distance']
+        else:
+            features['distance'] = self.getMazeDistance(myPos, newPos)*ghost_weights['distance']
+
+        return sum([features[feature] for feature in features])
+
+    def minimax(gamestate, depth, agent, opponents, alpha=-float('inf'), beta=float('inf')):
+
+        # Get legal moves per agent
+        legalActions = [action for action in gamestate.getLegalActions(self.index) if action != Directions.STOP]
+
+        # Generate optimal action recursively
+        actions = {}
+        if agent == self.index:
+            maxVal = -float('inf')
+            for action in legalActions:
+                eval = self.evaluate(gamestate, action)
+                if depth == self.treeDepth:
+                    value = eval
+                else:
+                    value = eval+minimax(self.getSuccessor(gamestate, action), depth, agent+1, opponents, alpha, beta)
+                maxVal = max(maxVal, value)
+                if beta < maxVal:
+                    return maxVal
+                else:
+                    alpha = max(alpha, maxVal)
+                if depth == 1:
+                    actions[value] = action
+            if depth == 1:          # If you're up to the first depth, return a legal action
+                return actions[maxVal]
+            return maxVal
+        else:
+            minVal = float('inf')
+            for opponent in opponents:
+                if gamestate.getAgentState(opponent).getPosition() is not None:
+                    legalActions = get_ghost_actions(opponents[opponent])
+                    for action in legalActions:
+                        new_opponents = opponents.copy()
+                        new_opponents[opponent] = get_new_position(opponents[opponent], action)
+                        ghost_val = ghost_eval(gamestate, new_opponents, opponent)
+                        value = ghost_val + minimax(gamestate, depth+1, self.index, new_opponents, alpha, beta)
+                        minVal = min(minVal, value)
+                        if minVal < alpha:
+                            return minVal
+                        else:
+                            beta = min(beta, minVal)
+            if minVal == float('inf'):
+                return 0
+            return minVal
+
+    return minimax(gameState, 1, self.index, opponents)
+
+
   def getFeatures(self, gameState, action):
     features = util.Counter()
     successor = self.getSuccessor(gameState, action)
@@ -182,7 +277,6 @@ class OffensiveReflexAgent(SmartAgent):
     # features['numGhosts'] = len(ghosts)
     if len(ghosts) > 0:
       ghostEval = 0.0
-      ghostScared = 0.0
       for ghost in ghosts:
         ghostDistance = self.getMazeDistance( myPos, ghost.getPosition() ) 
         if ghost.scaredTimer == 0:       # If ghost is not scared
@@ -194,11 +288,11 @@ class OffensiveReflexAgent(SmartAgent):
               ghostEval = ghostDistance
         else:   # If ghost is scared
           if ghostDistance == 0:
-            ghostScared = 100
+            ghostEval = ghostEval+100
             break
           else:
             if ghostDistance < abs(ghostEval):
-              ghostScared = - ghostDistance
+              ghostEval = -ghostDistance
       features['distanceToGhost'] = ghostEval
 
     # Compute distance to the nearest food
@@ -215,11 +309,13 @@ class OffensiveReflexAgent(SmartAgent):
       features['distanceToCapsules'] = minDistance
 
     if action == Directions.STOP: features['stop'] = 1
+    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+    if action == rev: features['reverse'] = 1
 
     return features
 
   def getWeights(self, gameState, action):
-    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'stop': -50, 'ghostScared': 50}
+    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -1, 'foodRemaining': -1, 'distanceToGhost': 3, 'distanceToCapsules': -1, 'stop': -50, 'ghostScared': 50, 'reverse': -5}
 
 class DefensiveReflexAgent(SmartAgent):
   """
