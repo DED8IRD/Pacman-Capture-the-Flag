@@ -177,8 +177,6 @@ class OffensiveReflexAgent(SmartAgent):
     directions = {'north': (0, 1), 'south': (0, -1), 'east': (1, 0), 'west': (-1, 0)}
     ghost_weights = {'distance': 5, 'scared': 5}
 
-    def expectation(opponents, )
-
     def get_ghost_actions(current_pos):
         walls = gameState.getWalls().asList()
 
@@ -198,6 +196,19 @@ class OffensiveReflexAgent(SmartAgent):
     def get_new_position(current_pos, action):
         act = directions[[direction for direction in directions if str(action).lower() == direction][0]]
         return (current_pos[0] + act[0], current_pos[1] + act[1])
+
+    def expectation(gamestate, position, legalActions):
+        ghost_dict = {}
+        for action in legalActions:
+            newPos = get_new_position(position, action)
+            ghost_dict[action] = self.getMazeDistance(position, newPos)*ghost_weights['distance']
+        min_action = min(ghost_dict)
+        for action in ghost_dict:
+            if ghost_dict[action] == min_action:
+                ghost_dict[action] = .8
+            else:
+                ghost_dict[action] = .2/len(legalActions)
+        return ghost_dict
 
     def ghost_eval(gamestate, opponents, opponent):
         newPos = opponents[opponent]
@@ -241,10 +252,11 @@ class OffensiveReflexAgent(SmartAgent):
             for opponent in opponents:
                 if gamestate.getAgentState(opponent).getPosition() is not None:
                     legalActions = get_ghost_actions(opponents[opponent])
+                    expectations = expectation(gamestate, opponents[opponent], legalActions)
                     for action in legalActions:
                         new_opponents = opponents.copy()
                         new_opponents[opponent] = get_new_position(opponents[opponent], action)
-                        ghost_val = ghost_eval(gamestate, new_opponents, opponent)
+                        ghost_val = ghost_eval(gamestate, new_opponents, opponent)*expectations[action]
                         value = ghost_val + minimax(gamestate, depth+1, self.index, new_opponents, alpha, beta)
                         minVal = min(minVal, value)
                         if minVal < alpha:
