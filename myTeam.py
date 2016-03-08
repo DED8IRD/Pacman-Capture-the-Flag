@@ -17,7 +17,7 @@ import game
 #################
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'OffensiveAgent', second = 'DefensiveAgent'):
+               first = 'AStarAgent', second = 'DefensiveAgent'):
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -69,11 +69,13 @@ class AStarAgent(CaptureAgent):
       
       def isGoal(self, state):
         pos, food = state
-        return food.count() <= 2
+        count = len(food.asList())
+        # return food.count() < 3
+        return count == 0
 
       def successorStates(self, state):
         "Returns successor states, the actions they require, and a cost of 1."
-        print "state", state
+        # print "state", state
         pos, food = state
         succ = []
         self._expanded += 1
@@ -82,7 +84,7 @@ class AStarAgent(CaptureAgent):
           dx, dy = Actions.directionToVector(direction)
           nextx, nexty = int(x + dx), int(y + dy)
           if not self.walls[nextx][nexty]:
-            nextFood = food.copy()
+            nextFood = food
             nextFood[nextx][nexty] = False
             succ.append( ( ((nextx, nexty), nextFood), direction, 1) )
         # print succ
@@ -101,12 +103,15 @@ class AStarAgent(CaptureAgent):
             return 999999
           cost += 1
         return cost
+
     return SearchProblem(startingGameState)
 
+  # def __init__(self):
+  #   # self.searchType = aStarSearch.SearchProblem
+
   def registerInitialState(self, gameState):
+    self.gameState = gameState
     self.start = (gameState.getAgentState(self.index).getPosition(), self.getFood(gameState))
-    # self.food = self.getFood(gameState)
-    # print self.food
     self.walls = gameState.getWalls()
     self.startingGameState = gameState
     self._expanded = 0
@@ -114,10 +119,12 @@ class AStarAgent(CaptureAgent):
 
     self.starttime = time.time()
     self.problem = self.createSearchProblem(gameState)
-    self.searchFunction = lambda prob: search.aStarSearch(prob, self.heuristic)
-    self.actions = self.aStarSearch(self.problem, self.heuristic(gameState, self.problem))
+    self.searchFunction = lambda x: self.aStarSearch(x, self.heuristic)
+    self.actions = self.searchFunction(self.problem)
+    # self.actions = self.aStarSearch(self.problem, self.heuristic(gameState, self.problem))
+    # print self.actions
 
-  def chooseAction(self, gameState):
+  def getAction(self, state):
     """
     Returns the next action in the path chosen earlier (in registerInitialState).  Return
     Directions.STOP if there is no further action to take.
@@ -127,46 +134,125 @@ class AStarAgent(CaptureAgent):
     if 'actionIndex' not in dir(self): self.actionIndex = 0
     i = self.actionIndex
     self.actionIndex += 1
+    # print "actions ", self.actions
     if i < len(self.actions):
       return self.actions[i]    
     else:
+      # self.problem = self.createSearchProblem(state)
+      # self.actions = self.searchFunction(self.problem)
       return Directions.STOP
 
-  def heuristic(self, gameState, problem):
-    pos, food = problem.startingState()
-    foodRemaining = food.count()
 
-    return foodRemaining    
+  def chooseAction(self, gameState):
+    """
+    Returns the next action in the path chosen earlier (in registerInitialState).  Return
+    Directions.STOP if there is no further action to take.
+    
+    state: a GameState object (pacman.py)
+    """
+    return self.getAction(gameState)
+
+  def heuristic(self, gameState, problem):
+    # print gameState
+    pos, foodGrid = gameState
+    # foodList = foodGrid.asList()
+    # dist = 0.0
+    # # print foodList
+    # if len(foodList) > 0: 
+    #   dist += min([abs(pos[0] - food[0]) + abs(pos[1] - food[1]) for food in foodList])
+    #   # print min(dist)
+    #   return dist
+    # return 0
+
+    foodRemaining = foodGrid.count()
+    return foodRemaining 
+
+  def getFeatures(self, gameState):
+    features = util.Counter()
+    successor = self.getSuccessor(gameState, action)
+    features['successorScore'] = self.getScore(successor)
+
+    myState = successor.getAgentState(self.index)
+    myPos = myState.getPosition()    
+
+    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+    ghosts = [a for a in enemies if not a.isPacman and a.getPosition() != None]
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+
+    # Computes distance to enemy ghosts
+    if len(invaders) > 0:
+        features['invaderDistance'] = min([self.getMazeDistance(myPos, invader.getPosition()) for invader in invaders]) + 1
+
+    if len(ghosts) > 0:
+      ghostEval = 0.0
+      ghostScared = 0.0
+      regGhosts = [ghost for ghost in ghosts if ghost.scaredTimer == 0]
+      scaredGhosts = [ghost for ghost in ghosts if ghost.scaredTimer > 0]
+      if len(regGhosts) > 0: 
+        ghostEval = min([self.getMazeDistance(myPos, ghost.getPosition()) for ghost in regGhosts])
+        if ghostEval <= 1:  ghostEval = -float('inf')
+         
+      if len(scaredGhosts) > 0: 
+        ghostScared = min([self.getMazeDistance(myPos, ghost.getPosition()) for ghost in scaredGhosts])
+      if ghostScared < ghostEval or ghostEval == 0:
+        if ghostScared == 0: ghostScared = -50
+        features['ghostScared'] = ghostScared
+      features['distanceToGhost'] = ghostEval
+
+
+    # Compute distance to the nearest food
+    foodList = self.getFood(successor).asList()
+    if len(foodList) > 0: # This should always be True,  but better safe than sorry
+      distance = min([self.getMazeDistance(myPos, food) for food in foodList])
+      features['distanceToFood'] = distance
+      features['foodRemaining'] = len(foodList)
+
+    # Compute distance to capsules
+    capsules = self.getCapsules(successor)
+    if len(capsules) > 0:
+      minDistance = min([ self.getMazeDistance(myPos, capsule) for capsule in capsules ])
+      if minDistance == 0: minDistance == -100
+      features['distanceToCapsules'] = minDistance
+
+    if action == Directions.STOP: features['stop'] = 1
+    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+    if action == rev: features['reverse'] = 1
+
+    return features
+
+  def getWeights(self, gameState, action):
+    return {'successorScore': 100, 'invaderDistance': -50, 'distanceToFood': -3, 'foodRemaining': -1, 'distanceToGhost': 50, 'ghostScared': -1, 'distanceToCapsules': -1, 'stop': -100, 'reverse': -50}
 
   def aStarSearch(self, problem, heuristic):
     fringe = util.PriorityQueue()
-    start = problem.startingState()
+    root = problem.startingState()
     explored = set()
     # root = (start, [])
-    print "root = ", start[0]
-    print "problem = ", self.problem
-    print "heurstic = ", self.heuristic(start, problem)
-    fringe.push( (start, [], 0), self.heuristic(start, problem) )   # Push root onto fringe
-
+    # print "root = ", start[0]
+    # print "problem = ", self.problem
+    # print "heurstic = ", self.heuristic(start, problem)
+    fringe.push( (root, [], 0), self.heuristic(root, problem) )   # Push root onto fringe
+    # print "fringe ", fringe
     while not fringe.isEmpty():
-      node, actions = fringe.pop()                     # Get new state
-      print "node: \n",node, "\n",actions
+      node, actions, cost = fringe.pop()               # Get new state
+      # print "node: \n",node, "\n",actions
       if problem.isGoal(node):                         # Goal test
+        print "in isGoal\n", node[1]
         return actions
-
-      explored.add(node)
-      nextState = problem.successorStates(node)        # Expand node
-      print "nextState = ", nextState
-      for coord, nextAction, cost in nextState:
-        if node not in explored:                       # Path checking
-          # coord, nextAction, cost = successor
-          # print "successor = ", successor
-          path = actions + [nextAction]
-          next = coord, path, cost
-          cost = problem.actionsCost(path) + self.heuristic(next, problem)
-          fringe.push(next, cost)
-          print fringe
-          print "fringe push :", next, cost
+      
+      if node not in explored:                         # Path checking
+        explored.add(node)
+        nextState = problem.successorStates(node)      # Expand node
+        # print "nextState = ", nextState
+        for next, nextAction, nextCost in nextState:
+            # next, nextAction, nextCost = successor
+            # print "successor = ", next, nextAction, nextCost
+            path = actions + [nextAction]
+            nextNode = next, path, nextCost
+            nextNodeCost = problem.actionsCost(path) + self.heuristic(next, problem)
+            fringe.push(nextNode, nextNodeCost)
+            # print fringe
+            # print "fringe push :", next, cost
     return []
     
 
@@ -434,7 +520,7 @@ class OffensiveAgent(SmartAgent):
       scaredGhosts = [ghost for ghost in ghosts if ghost.scaredTimer > 0]
       if len(regGhosts) > 0: 
         ghostEval = min([self.getMazeDistance(myPos, ghost.getPosition()) for ghost in regGhosts])
-        if ghostEval == 0:  ghostEval = -float('inf')
+        if ghostEval <= 1:  ghostEval = -float('inf')
          
       if len(scaredGhosts) > 0: 
         ghostScared = min([self.getMazeDistance(myPos, ghost.getPosition()) for ghost in scaredGhosts])
@@ -455,6 +541,7 @@ class OffensiveAgent(SmartAgent):
     capsules = self.getCapsules(successor)
     if len(capsules) > 0:
       minDistance = min([ self.getMazeDistance(myPos, capsule) for capsule in capsules ])
+      if minDistance == 0: minDistance == -100
       features['distanceToCapsules'] = minDistance
 
     if action == Directions.STOP: features['stop'] = 1
@@ -521,7 +608,7 @@ class DefensiveAgent(SmartAgent):
     foodList = self.getFood(successor).asList()
     if len(foodList) > 0: # This should always be True,  but better safe than sorry
       minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
-      features['distanceToFood'] = minDistance + 1
+      if features['distanceToFood'] == 0: features['distanceToFood'] = minDistance + 1
 
     dist = 0.0
     distances = [self.getMazeDistance(myPos, enemy.getPosition()) for enemy in enemies if (enemy.scaredTimer != 0 and enemy.getPosition() is not None)]
@@ -570,16 +657,18 @@ class DefensiveAgent(SmartAgent):
     upper = (max_y*2)/3
 
     # If the positions are illegal states, add 1 to get a legal state
-    while (mid_x, lower) in walls: lower += 1
-    if lower >= max_wall:
-      lower = max_y/3
-      while (mid_x, lower) in walls: 
-        if self.isRed: mid_x += 1
-        else: mid_x -= 1
-    while (mid_x, upper) in walls: upper += 1
-    if upper >= max_wall:
-      upper = max_y*2/3
-      while (mid_x, upper) in walls: 
-        if self.isRed: mid_x += 1
-        else: mid_x -= 1
+    while (mid_x, lower) in walls or lower >= max_wall or lower < 0:
+      while (mid_x, lower) in walls: lower += 1
+      # if lower >= max_wall or lower < 0: lower = max_y/3
+      if (mid_x, lower) in walls: 
+        if self.isRed: mid_x -= 1
+        else: mid_x += 1
+      while (mid_x, lower) in walls: lower -= 1
+    while (mid_x, upper) in walls or upper >= max_wall or upper < 0:
+      while (mid_x, upper) in walls: upper += 1
+      # if upper >= max_wall or upper < 0: upper = max_y*2/3
+      if (mid_x, upper) in walls: 
+        if self.isRed: mid_x -= 1
+        else: mid_x += 1
+      while (mid_x, upper) in walls: upper -= 1
     return (mid_x, lower), (mid_x, upper)
